@@ -25,7 +25,7 @@ class PianoTranscription(object):
           device: 'cuda' | 'cpu'
         """
         if not checkpoint_path: 
-            checkpoint_path='{}/piano_transcription_inference_data/note_F1=0.9677_pedal_F1=0.9186.pth'.format(str(Path.home()))
+            checkpoint_path='{}/.piano_transcription_inference_data/note_F1=0.9677_pedal_F1=0.9186.pth'.format(str(Path.home()))
         print('Checkpoint path: {}'.format(checkpoint_path))
 
         if not os.path.exists(checkpoint_path) or os.path.getsize(checkpoint_path) < 1.6e8:
