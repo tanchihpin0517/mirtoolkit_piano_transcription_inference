@@ -64,3 +64,43 @@ def forward(model, x, batch_size):
         output_dict[key] = np.concatenate(output_dict[key], axis=0)
 
     return output_dict
+
+def forward_stream(model, frame_stream, batch_size):
+    """Forward data to model in mini-batch. 
+    
+    Args: 
+      model: object
+      x: (N, segment_samples)
+      batch_size: int
+
+    Returns:
+      output_dict: dict, e.g. {
+        'frame_output': (segments_num, frames_num, classes_num),
+        'onset_output': (segments_num, frames_num, classes_num),
+        ...}
+    """
+    
+    device = next(model.parameters()).device
+    model.eval()
+
+    batch = []
+    for frame in frame_stream:
+        frame = frame[None, :]
+        batch.append(frame)
+
+        if len(batch) == batch_size:
+            yield _forward_stream_batch(model, batch, device)
+            batch = []
+
+    if len(batch) > 0:
+        yield _forward_stream_batch(model, batch, device)
+
+
+def _forward_stream_batch(model, batch, device):
+    x = np.concatenate(batch, axis=0)
+    batch_waveform = move_data_to_device(x, device)
+    with torch.no_grad():
+        batch_output_dict = model(batch_waveform)
+    for key in batch_output_dict.keys():
+        batch_output_dict[key] = batch_output_dict[key].data.cpu().numpy()
+    return batch_output_dict

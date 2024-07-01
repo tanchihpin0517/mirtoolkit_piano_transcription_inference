@@ -6,15 +6,17 @@ from pathlib import Path
 
 import torch
 
-from .utilities import (create_folder, get_filename, RegressionPostProcessor, 
+from .utilities import (
+    create_folder, get_filename,
+    RegressionPostProcessor, StreamRegressionPostProcessor,
     write_events_to_midi)
 from .models import Regress_onset_offset_frame_velocity_CRNN, Note_pedal
-from .pytorch_utils import move_data_to_device, forward
+from .pytorch_utils import move_data_to_device, forward, forward_stream
 from . import config
 
 
 class PianoTranscription(object):
-    def __init__(self, model_type='Note_pedal', checkpoint_path=None, 
+    def __init__(self, model_type='Note_pedal', checkpoint_path=None,
         segment_samples=16000*10, device=torch.device('cuda')):
         """Class for transcribing piano solo recording.
 
@@ -24,7 +26,7 @@ class PianoTranscription(object):
           segment_samples: int
           device: 'cuda' | 'cpu'
         """
-        if not checkpoint_path: 
+        if not checkpoint_path:
             checkpoint_path='{}/.piano_transcription_inference_data/note_F1=0.9677_pedal_F1=0.9186.pth'.format(str(Path.home()))
         print('Checkpoint path: {}'.format(checkpoint_path))
 
@@ -46,7 +48,7 @@ class PianoTranscription(object):
 
         # Build model
         Model = eval(model_type)
-        self.model = Model(frames_per_second=self.frames_per_second, 
+        self.model = Model(frames_per_second=self.frames_per_second,
             classes_num=self.classes_num)
 
         # Load model
@@ -61,7 +63,7 @@ class PianoTranscription(object):
         else:
             print('Using CPU.')
 
-    def transcribe(self, audio, midi_path):
+    def transcribe(self, audio, midi_path=None):
         """Transcribe an audio recording.
 
         Args:
@@ -93,16 +95,16 @@ class PianoTranscription(object):
         for key in output_dict.keys():
             output_dict[key] = self.deframe(output_dict[key])[0 : audio_len]
         """output_dict: {
-          'reg_onset_output': (N, segment_frames, classes_num), 
-          'reg_offset_output': (N, segment_frames, classes_num), 
-          'frame_output': (N, segment_frames, classes_num), 
+          'reg_onset_output': (N, segment_frames, classes_num),
+          'reg_offset_output': (N, segment_frames, classes_num),
+          'frame_output': (N, segment_frames, classes_num),
           'velocity_output': (N, segment_frames, classes_num)}"""
 
         # Post processor
-        post_processor = RegressionPostProcessor(self.frames_per_second, 
-            classes_num=self.classes_num, onset_threshold=self.onset_threshold, 
-            offset_threshold=self.offset_threshod, 
-            frame_threshold=self.frame_threshold, 
+        post_processor = RegressionPostProcessor(self.frames_per_second,
+            classes_num=self.classes_num, onset_threshold=self.onset_threshold,
+            offset_threshold=self.offset_threshod,
+            frame_threshold=self.frame_threshold,
             pedal_offset_threshold=self.pedal_offset_threshold)
 
         # Post process output_dict to MIDI events
@@ -111,12 +113,12 @@ class PianoTranscription(object):
 
         # Write MIDI events to file
         if midi_path:
-            write_events_to_midi(start_time=0, note_events=est_note_events, 
+            write_events_to_midi(start_time=0, note_events=est_note_events,
                 pedal_events=est_pedal_events, midi_path=midi_path)
             print('Write out to {}'.format(midi_path))
 
         transcribed_dict = {
-            'output_dict': output_dict, 
+            'output_dict': output_dict,
             'est_note_events': est_note_events,
             'est_pedal_events': est_pedal_events}
 
@@ -169,3 +171,103 @@ class PianoTranscription(object):
             y.append(x[-1, int(segment_samples * 0.25) :])
             y = np.concatenate(y, axis=0)
             return y
+
+    def transcribe_stream(self, audio_stream, midi_path=None, verbose=True):
+        """Transcribe an audio recording.
+
+        Args:
+          audio: (audio_samples,)
+          midi_path: str, path to write out the transcribed MIDI.
+
+        Returns:
+          transcribed_dict, dict: {'output_dict':, ..., 'est_note_events': ...}
+
+        """
+
+        frame_stream = self.enframe_stream(audio_stream, verbose=verbose)
+        output_dict_stream = forward_stream(self.model, frame_stream, batch_size=1)
+        deframe_stream = self.deframe_stream(output_dict_stream)
+
+        # Post processor
+        post_processor = StreamRegressionPostProcessor(
+            self.frames_per_second,
+            classes_num=self.classes_num,
+            onset_threshold=self.onset_threshold,
+            offset_threshold=self.offset_threshod,
+            frame_threshold=self.frame_threshold,
+            pedal_offset_threshold=self.pedal_offset_threshold
+        )
+        (est_note_events, est_pedal_events) = \
+            post_processor.output_dict_to_midi_events(deframe_stream)
+
+        # Write MIDI events to file
+        if midi_path:
+            write_events_to_midi(start_time=0, note_events=est_note_events,
+                pedal_events=est_pedal_events, midi_path=midi_path)
+            print('Write out to {}'.format(midi_path))
+
+        transcribed_dict = {
+            # 'output_dict': output_dict,
+            'est_note_events': est_note_events,
+            'est_pedal_events': est_pedal_events}
+
+        return transcribed_dict
+
+    def enframe_stream(self, audio_stream, verbose=False):
+        prev_chunk = None
+        small_chunk = 0
+        for i, (chunk, _, duration) in enumerate(audio_stream):
+            chunk_time = self.segment_samples / 16000
+            total_chunks = int(np.ceil(duration / chunk_time))
+
+            if len(chunk) < self.segment_samples:
+                pad_len = int(np.ceil(len(chunk) / self.segment_samples))\
+                    * self.segment_samples - len(chunk)
+                chunk = np.concatenate((chunk, np.zeros(pad_len)))
+                small_chunk += 1
+
+            assert len(chunk) <= self.segment_samples
+            assert small_chunk <= 1 # only the last chunk can be small
+
+            if prev_chunk is not None:
+                l = prev_chunk[self.segment_samples//2:]
+                r = chunk[:self.segment_samples//2]
+                yield np.concatenate((l, r))
+
+            yield chunk
+            prev_chunk = chunk
+
+            if verbose:
+                print('Segment {} / {}'.format(i, total_chunks))
+
+    def deframe_stream(self, output_dict_stream):
+        last_output_dict = None
+        first_batch = True
+
+        for output_dict in output_dict_stream:
+            batch_size = 1
+            for value in output_dict.values():
+                batch_size = value.shape[0]
+
+            for b in range(batch_size):
+                if first_batch:
+                    yield self._deframe_stream_chunk(output_dict, b, 0.0, 0.25)
+                    first_batch = False
+
+                yield self._deframe_stream_chunk(output_dict, b, 0.25, 0.5)
+                yield self._deframe_stream_chunk(output_dict, b, 0.5, 0.75)
+
+            last_output_dict = output_dict
+
+        if last_output_dict is not None:
+            yield self._deframe_stream_chunk(last_output_dict, -1, 0.75, 1.0)
+
+    def _deframe_stream_chunk(self, output_dict, b, l, r):
+        buf = {}
+        for key in output_dict.keys():
+            x = output_dict[key][b]
+            x = x[0 : -1, :]
+            segment_samples = x.shape[0]
+            assert segment_samples % 4 == 0
+            buf[key] = x[int(l*segment_samples):int(r*segment_samples)]
+        return buf
