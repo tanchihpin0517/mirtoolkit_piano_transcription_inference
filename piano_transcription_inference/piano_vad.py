@@ -144,6 +144,9 @@ def note_detection_with_onset_offset_regress_stream(
     First, detect onsets with onset outputs. Then, detect offsets
     with frame and offset outputs.
 
+    Since the input is a stream, not a whole piece, we need to
+    keep some values got from the previous buffers
+
     Args:
       frame_output: (frames_num,)
       onset_output: (frames_num,)
@@ -152,6 +155,7 @@ def note_detection_with_onset_offset_regress_stream(
       offset_shift_output: (frames_num,)
       velocity_output: (frames_num,)
       frame_threshold: float
+      prev_state: dict
     Returns:
       output_tuples: list of [bgn, fin, onset_shift, offset_shift, normalized_velocity],
       e.g., [
@@ -265,6 +269,7 @@ def pedal_detection_with_onset_offset_regress_stream(
       offset_output: (frames_num,)
       offset_shift_output: (frames_num,)
       frame_threshold: float
+      prev_state: dict
     Returns:
       output_tuples: list of [bgn, fin, onset_shift, offset_shift],
       e.g., [

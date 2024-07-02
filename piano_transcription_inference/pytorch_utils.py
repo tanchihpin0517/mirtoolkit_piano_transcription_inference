@@ -70,13 +70,13 @@ def forward_stream(model, frame_stream, batch_size):
     
     Args: 
       model: object
-      x: (N, segment_samples)
+      frame_stream: (N, segment_samples)
       batch_size: int
 
     Returns:
       output_dict: dict, e.g. {
-        'frame_output': (segments_num, frames_num, classes_num),
-        'onset_output': (segments_num, frames_num, classes_num),
+        'frame_output': (L, frames_num, classes_num),
+        'onset_output': (L, frames_num, classes_num),
         ...}
     """
     

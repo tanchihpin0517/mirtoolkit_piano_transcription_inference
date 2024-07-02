@@ -173,14 +173,26 @@ class PianoTranscription(object):
             return y
 
     def transcribe_stream(self, audio_stream, midi_path=None, verbose=True):
-        """Transcribe an audio recording.
+        """Transcribe an audio recording in a streaming way.
+
+        This function is useful for transcribing long audio recordings.
+        The dataflow in the non-streaming way is as follows:
+
+        (1)     Audio (audio_samples, )
+        (2) ->  Enframe to segments (N, segment_samples)
+        (3) ->  Forward (N, segment_frames, classes_num)
+        (4) ->  Deframe to continuous sequences (audio_frames, classes_num)
+        (5) ->  Post process to MIDI events (note_events, pedal_events)
+
+        Step (1) to (4) require a large amount of memory when the audio is long.
+        This function converts (1 - 4) to a streaming way to reduce memory consumption.
 
         Args:
-          audio: (audio_samples,)
+          audio_stream: (L, buffer_samples)
           midi_path: str, path to write out the transcribed MIDI.
 
         Returns:
-          transcribed_dict, dict: {'output_dict':, ..., 'est_note_events': ...}
+          transcribed_dict, dict: {'est_note_events': ..., 'est_pedal_events': ...}
 
         """
 
@@ -207,13 +219,22 @@ class PianoTranscription(object):
             print('Write out to {}'.format(midi_path))
 
         transcribed_dict = {
-            # 'output_dict': output_dict,
             'est_note_events': est_note_events,
             'est_pedal_events': est_pedal_events}
 
         return transcribed_dict
 
     def enframe_stream(self, audio_stream, verbose=False):
+        """Enframe long sequence to short segments.
+
+        Args:
+          audio_stream: (L, audio_samples)
+          segment_samples: int
+
+        Returns:
+          batch: (N, segment_samples)
+        """
+
         prev_chunk = None
         small_chunk = 0
         for i, (chunk, _, duration) in enumerate(audio_stream):
@@ -241,6 +262,15 @@ class PianoTranscription(object):
                 print('Segment {} / {}'.format(i, total_chunks))
 
     def deframe_stream(self, output_dict_stream):
+        """Deframe overlapped predicted segments to frame stream.
+
+        Args:
+          x: (N, segment_frames, classes_num)
+
+        Returns:
+          y: (L, segment_frames / 4, classes_num)
+        """
+
         last_output_dict = None
         first_batch = True
 

@@ -534,14 +534,14 @@ class StreamRegressionPostProcessor(object):
         """Main function. Post process model outputs to MIDI events.
 
         Args:
-          output_dict: {
+          output_dict_stream: [{
             'reg_onset_output': (segment_frames, classes_num),
             'reg_offset_output': (segment_frames, classes_num),
             'frame_output': (segment_frames, classes_num),
             'velocity_output': (segment_frames, classes_num),
             'reg_pedal_onset_output': (segment_frames, 1),
             'reg_pedal_offset_output': (segment_frames, 1),
-            'pedal_frame_output': (segment_frames, 1)}
+            'pedal_frame_output': (segment_frames, 1)}, ...]
 
         Outputs:
           est_note_events: list of dict, e.g. [
@@ -576,12 +576,12 @@ class StreamRegressionPostProcessor(object):
         events.
 
         Args:
-          output_dict: dict, {
+          output_dict_stream: generator, [{
             'reg_onset_output': (frames_num, classes_num),
             'reg_offset_output': (frames_num, classes_num),
             'frame_output': (frames_num, classes_num),
             'velocity_output': (frames_num, classes_num),
-            ...}
+            ...}, ...]
 
         Returns:
           est_on_off_note_vels: (events_num, 4), the 4 columns are onset_time,
@@ -665,9 +665,6 @@ class StreamRegressionPostProcessor(object):
         self,
         output_dict,
     ):
-        # ------ 1. Process regression outputs to binarized outputs ------
-        # For example, onset or offset of [0., 0., 0.15, 0.30, 0.40, 0.35, 0.20, 0.05, 0., 0.]
-        # will be processed to [0., 0., 0., 0., 1., 0., 0., 0., 0., 0.]
         tmp = {}
         for key in output_dict.keys():
             tmp[key] = output_dict[key].copy()
@@ -839,9 +836,11 @@ class StreamRegressionPostProcessor(object):
         est_tuples:
             (notes, 5), the five columns are onset, offset, onset_shift,
             offset_shift and normalized_velocity
+
+        est_on_off_note_vels:
+            (notes, 4), the three columns are onset_times, offset_times, midi_note and velocity.
         """
         est_on_off_note_vels = self._get_on_off_note_vels(est_tuples, est_midi_notes)
-        """(notes, 3), the three columns are onset_times, offset_times and velocity."""
 
         return est_on_off_note_vels
 
@@ -861,7 +860,7 @@ class StreamRegressionPostProcessor(object):
             velocities = est_tuples[:, 4]
 
             on_off_note_vels = np.stack((onset_times, offset_times, est_midi_notes, velocities), axis=-1)
-            """(notes, 3), the three columns are onset_times, offset_times and velocity."""
+            """(notes, 4), the three columns are onset_times, offset_times, midi_note and velocity."""
 
             on_off_note_vels = on_off_note_vels.astype(np.float32)
 
