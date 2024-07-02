@@ -852,7 +852,7 @@ class StreamRegressionPostProcessor(object):
         est_midi_notes = np.array(est_midi_notes) # (notes,)
 
         if len(est_tuples) == 0:
-            return np.array([])
+            return np.array([]).reshape(0, 4)
 
         else:
             onset_times = (est_tuples[:, 0] + est_tuples[:, 2]) / self.frames_per_second
@@ -897,7 +897,7 @@ class StreamRegressionPostProcessor(object):
         """(notes, 2), the two columns are pedal onsets and pedal offsets"""
 
         if len(est_tuples) == 0:
-            return np.array([])
+            return np.array([]).reshape(0, 2)
 
         else:
             onset_times = (est_tuples[:, 0] + est_tuples[:, 2]) / self.frames_per_second
