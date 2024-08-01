@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 from . import config
+from .models import Note_pedal
 from .pytorch_utils import forward, forward_stream
 from .utilities import (
     RegressionPostProcessor,
@@ -56,7 +57,10 @@ class PianoTranscription(object):
         self.pedal_offset_threshold = 0.2
 
         # Build model
-        Model = eval(model_type)
+        if model_type == "Note_pedal":
+            Model = Note_pedal
+        else:
+            raise ValueError(f"model_type {model_type} not recognized")
         self.model = Model(
             frames_per_second=self.frames_per_second, classes_num=self.classes_num
         )
