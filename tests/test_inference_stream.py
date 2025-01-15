@@ -1,12 +1,15 @@
 from piano_transcription_inference import PianoTranscription, load_audio, sample_rate
-from piano_transcription_inference.utilities import load_audio_stream
 
 
 def test_inference_stream():
-    audio_path = "resources/cut_liszt.mp3"
+    audio_files = ["resources/cut_liszt.mp3"]
+    for audio_path in audio_files:
+        _test_inference_stream(audio_path)
 
+
+def _test_inference_stream(audio_path):
     # Load audio
-    audio_stream = load_audio_stream(audio_path, sr=sample_rate, mono=True)
+    audio, _ = load_audio(audio_path, sr=sample_rate, mono=True)
 
     # Transcriptor
     transcriptor = PianoTranscription(
@@ -14,10 +17,7 @@ def test_inference_stream():
     )  # device: 'cuda' | 'cpu'
 
     # Transcribe and write out to MIDI file
-    transcribed_dict_stream = transcriptor.transcribe_stream(audio_stream)
-
-    # Load audio
-    audio, _ = load_audio(audio_path, sr=sample_rate, mono=True)
+    transcribed_dict_stream = transcriptor.transcribe_stream(audio)
 
     # Transcribe and write out to MIDI file
     transcribed_dict = transcriptor.transcribe(audio)

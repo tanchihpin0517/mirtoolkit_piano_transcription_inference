@@ -201,7 +201,7 @@ class PianoTranscription(object):
             y = np.concatenate(y, axis=0)
             return y
 
-    def transcribe_stream(self, audio_stream, midi_path=None, verbose=True):
+    def transcribe_stream(self, audio, midi_path=None, verbose=True):
         """Transcribe an audio recording in a streaming way.
 
         This function is useful for transcribing long audio recordings.
@@ -225,7 +225,9 @@ class PianoTranscription(object):
 
         """
 
-        frame_stream = self.enframe_stream(audio_stream, verbose=verbose)
+        frame_stream = self.enframe_stream(
+            self.get_audio_stream(audio), verbose=verbose
+        )
         output_dict_stream = forward_stream(self.model, frame_stream, batch_size=1)
         deframe_stream = self.deframe_stream(output_dict_stream)
 
@@ -259,6 +261,26 @@ class PianoTranscription(object):
 
         return transcribed_dict
 
+    def get_audio_stream(self, audio):
+        """Get audio stream from audio.
+
+        Args:
+          audio: (audio_samples, )
+
+        Returns:
+          audio_stream: (L, buffer_samples)
+        """
+        pointer = 0
+        while pointer + self.segment_samples <= audio.shape[0]:
+            yield (
+                audio[pointer : pointer + self.segment_samples],
+                audio.shape[0] / 16000,
+            )
+            pointer += self.segment_samples
+
+        if pointer < audio.shape[0]:
+            yield audio[pointer:], audio.shape[0] / 16000
+
     def enframe_stream(self, audio_stream, verbose=False):
         """Enframe long sequence to short segments.
 
@@ -272,7 +294,7 @@ class PianoTranscription(object):
 
         prev_chunk = None
         small_chunk = 0
-        for i, (chunk, _, duration) in enumerate(audio_stream):
+        for i, (chunk, duration) in enumerate(audio_stream):
             chunk_time = self.segment_samples / 16000
             total_chunks = int(np.ceil(duration / chunk_time))
 
@@ -295,7 +317,7 @@ class PianoTranscription(object):
             prev_chunk = chunk
 
             if verbose:
-                print("Segment {} / {}".format(i, total_chunks))
+                print("Segment {} / {}".format(i + 1, total_chunks))
 
     def deframe_stream(self, output_dict_stream):
         """Deframe overlapped predicted segments to frame stream.
